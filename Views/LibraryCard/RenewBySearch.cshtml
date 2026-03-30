@@ -1,0 +1,429 @@
+@{
+    ViewData["Title"] = "Gia hạn thẻ thư viện";
+    var prevBarcode  = ViewBag.Barcode as string ?? string.Empty;
+    var prevMonths   = ViewBag.DurationMonths as int? ?? MyLibraryDemo.Services.RenewalDuration.AllowedMonths[0];
+}
+
+<style>
+    /* ── Search box ── */
+    .search-box { position: relative; }
+    .search-box input { padding-left: 2.4rem; }
+    .search-box .search-icon {
+        position: absolute; left: .75rem; top: 50%;
+        transform: translateY(-50%); color: #64748b;
+        pointer-events: none; font-size: .85rem;
+    }
+    .autocomplete-dropdown {
+        position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 1050;
+        max-height: 260px; overflow-y: auto;
+    }
+    .ac-item { padding: .65rem 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: .875rem; transition: background .1s; }
+    .ac-item:last-child { border-bottom: none; }
+    .ac-item:hover, .ac-item.active { background: #f0f7ff; }
+    .ac-empty, .ac-loading { padding: .75rem 1rem; color: #94a3b8; font-size: .875rem; text-align: center; }
+
+    /* ── Card preview ── */
+    .card-preview {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        border-radius: 16px; color: #fff; padding: 1.5rem;
+        margin-bottom: 1.5rem; position: relative; overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0,0,0,.2);
+    }
+    .card-preview::before {
+        content: ''; position: absolute; right: -40px; top: -40px;
+        width: 160px; height: 160px; border-radius: 50%;
+        background: rgba(255,255,255,.05);
+    }
+    .card-preview .badge-status {
+        position: absolute; top: 1rem; right: 1rem;
+        padding: .3rem .75rem; border-radius: 20px; font-size: .72rem; font-weight: 700;
+    }
+    .badge-status.valid    { background: #d1fae5; color: #065f46; }
+    .badge-status.expired  { background: #fef3c7; color: #92400e; }
+    .badge-status.inactive { background: #fee2e2; color: #991b1b; }
+
+    /* ── Duration slider ── */
+    .duration-preset button { border-radius: 20px; font-size: .8rem; padding: .25rem .75rem; }
+
+    /* ── New expiry preview ── */
+    .expiry-preview {
+        background: #f0fdf4; border: 1.5px solid #86efac;
+        border-radius: 10px; padding: .75rem 1rem; margin-top: .75rem;
+        font-size: .875rem; display: none;
+    }
+    .expiry-preview.show { display: block; }
+
+    @@keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    .card-preview { animation: fadeIn .2s ease; }
+</style>
+
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a asp-controller="Reader" asp-action="Index" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h4 class="mb-0 fw-bold">Gia hạn thẻ thư viện</h4>
+</div>
+
+<div class="row g-4">
+    <!-- ── LEFT: Form ── -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body p-4">
+
+                @if (!ViewData.ModelState.IsValid)
+                {
+                    <div class="alert alert-danger d-flex align-items-start gap-2 mb-3" style="border-radius:10px">
+                        <i class="fas fa-exclamation-circle mt-1"></i>
+                        <div>
+                            @foreach (var entry in ViewData.ModelState.Values)
+                            {
+                                foreach (var err in entry.Errors)
+                                {
+                                    <div>@err.ErrorMessage</div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                <form method="post" asp-action="RenewBySearch" id="renewForm">
+                    @Html.AntiForgeryToken()
+
+                    <!-- ── Step 1: Find card ── -->
+                    <div class="mb-3">
+                        <label class="form-label fw-600">
+                            <i class="fas fa-id-card me-1 text-primary"></i>
+                            Tìm thẻ theo Barcode hoặc Tên độc giả
+                        </label>
+                        <div class="form-text mb-2">Nhập barcode hoặc tên để tìm – tối thiểu 2 ký tự</div>
+
+                        <div class="search-box">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" id="cardSearchInput" class="form-control"
+                                   placeholder="VD: LIB2026... hoặc Nguyễn Văn A"
+                                   autocomplete="off"
+                                   value="@prevBarcode" />
+                            <div class="autocomplete-dropdown" id="cardDropdown" style="display:none"></div>
+                        </div>
+
+                        <!-- Hidden fields sent with form -->
+                        <input type="hidden" name="barcode"  id="hiddenBarcode"   value="@prevBarcode" />
+                    </div>
+
+                    <!-- ── Selected card preview ── -->
+                    <div id="selectedCardPreview" class="card-preview mb-3" style="display:none">
+                        <span id="previewStatus" class="badge-status"></span>
+                        <div class="mb-1" style="font-size:.75rem;opacity:.7">THẺ THƯ VIỆN</div>
+                        <div class="fs-5 fw-bold mb-1" id="previewName">–</div>
+                        <div style="font-size:.8rem;opacity:.8">
+                            <i class="fas fa-barcode me-1"></i><span id="previewBarcode">–</span>
+                        </div>
+                        <div class="mt-2" style="font-size:.8rem;opacity:.7">
+                            Hiệu lực đến:&nbsp;<strong id="previewExpiry">–</strong>
+                        </div>
+                        <button type="button" id="clearCard" class="btn btn-sm btn-outline-light mt-2" style="font-size:.75rem">
+                            <i class="fas fa-times me-1"></i>Đổi thẻ khác
+                        </button>
+                    </div>
+
+                    <!-- ── Step 2: Duration ── -->
+                    <div class="mb-4" id="durationSection" style="display:none">
+                        <label class="form-label fw-600">
+                            <i class="fas fa-calendar-plus me-1 text-success"></i>
+                            Thời hạn gia hạn (tháng)
+                        </label>
+
+                        <select name="durationMonths" id="durationInput" class="form-select mb-2">
+                            @foreach (var m in MyLibraryDemo.Services.RenewalDuration.AllowedMonths)
+                            {
+                                if (prevMonths == m)
+                                {
+                                    <option value="@m" selected>@m tháng</option>
+                                }
+                                else
+                                {
+                                    <option value="@m">@m tháng</option>
+                                }
+                            }
+                        </select>
+
+                        <!-- Live new expiry preview -->
+                        <div class="expiry-preview" id="expiryPreview">
+                            <i class="fas fa-check-circle text-success me-1"></i>
+                            Ngày hết hạn mới sẽ là:&nbsp;<strong id="newExpiryDisplay">–</strong>
+                        </div>
+                    </div>
+
+                    <!-- ── Submit ── -->
+                    <div id="submitSection" style="display:none">
+                        <button type="submit" class="btn btn-success w-100" id="submitBtn">
+                            <i class="fas fa-sync-alt me-2"></i>Xác nhận gia hạn
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── RIGHT: Help / Info ── -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-3">
+                    <i class="fas fa-info-circle text-primary me-1"></i>
+                    Hướng dẫn gia hạn thẻ
+                </h6>
+                <ul class="list-unstyled" style="font-size:.875rem;color:#475569">
+                    <li class="mb-2">
+                        <span class="badge" style="background:#dbeafe;color:#1e40af">1</span>&nbsp;
+                        Tìm thẻ bằng <strong>Barcode</strong> hoặc Tên độc giả
+                    </li>
+                    <li class="mb-2">
+                        <span class="badge" style="background:#dbeafe;color:#1e40af">2</span>&nbsp;
+                        Chọn thời hạn gia hạn (1, 6 hoặc 12 tháng)
+                    </li>
+                    <li class="mb-2">
+                        <span class="badge" style="background:#dbeafe;color:#1e40af">3</span>&nbsp;
+                        Xem trước ngày hết hạn mới, sau đó xác nhận
+                    </li>
+                </ul>
+
+                <hr />
+                <div style="font-size:.82rem;color:#64748b">
+                    <p class="mb-1"><strong>Quy tắc tính ngày hết hạn:</strong></p>
+                    <ul class="ps-3 mb-0">
+                        <li>Thẻ còn hiệu lực → <em>Ngày HH hiện tại + số tháng</em></li>
+                        <li>Thẻ hết hạn hoặc vô hiệu → <em>Hôm nay + số tháng</em></li>
+                        <li>Thẻ vô hiệu (deactivated) sẽ được kích hoạt lại tự động</li>
+                    </ul>
+                </div>
+
+                <hr />
+                <div style="font-size:.82rem;color:#64748b">
+                    <p class="mb-1"><strong>Màu trạng thái:</strong></p>
+                    <span class="badge me-1" style="background:#d1fae5;color:#065f46">Hợp lệ</span>
+                    <span class="badge me-1" style="background:#fef3c7;color:#92400e">Hết hạn</span>
+                    <span class="badge" style="background:#fee2e2;color:#991b1b">Vô hiệu</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    'use strict';
+
+    // ── Elements ──────────────────────────────────────────────────
+    const input       = document.getElementById('cardSearchInput');
+    const dropdown    = document.getElementById('cardDropdown');
+    const hiddenB     = document.getElementById('hiddenBarcode');
+    const preview     = document.getElementById('selectedCardPreview');
+    const durationSec = document.getElementById('durationSection');
+    const submitSec   = document.getElementById('submitSection');
+    const durationIn  = document.getElementById('durationInput');
+    const expiryPrev  = document.getElementById('expiryPreview');
+    const newExpDisp  = document.getElementById('newExpiryDisplay');
+
+    // Stored selected card expiry for preview calculation
+    let selectedExpiry = null; // ISO string e.g. "2025-03-01"
+    let selectedStatus = null;
+    let searchAbort    = null;
+
+    // ── If form was re-rendered with prefilled values (server error restore) ─
+    if (hiddenB.value) {
+        // Don't show preview unless we have card data stored; user can re-search
+    }
+
+    // ── Search ────────────────────────────────────────────────────
+    async function doSearch(term) {
+        if (term.trim().length < 2) {
+            term.trim().length === 1
+                ? showHint('<i class="fas fa-keyboard me-1"></i>Nhập tối thiểu 2 ký tự...')
+                : closeDD();
+            return;
+        }
+        if (searchAbort) searchAbort.abort();
+        searchAbort = new AbortController();
+        showLoading();
+        try {
+            const res  = await fetch(`/LibraryCard/LookupCard?term=${encodeURIComponent(term)}`, { signal: searchAbort.signal });
+            renderResults(await res.json());
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            dropdown.style.display = 'block';
+            dropdown.innerHTML = `<div class="ac-empty"><i class="fas fa-exclamation-circle me-1"></i>Lỗi kết nối. <button class="btn btn-link btn-sm p-0 ms-1" onclick="window._retry()">Thử lại</button></div>`;
+        }
+    }
+    window._retry = () => doSearch(input.value);
+
+    function renderResults(data) {
+        dropdown.style.display = 'block';
+
+        // EC-12: response is now { items: [...], hasMore: bool }
+        const cards   = data.items ?? data; // backward-compat if shape changes
+        const hasMore = data.hasMore ?? false;
+
+        if (cards.length === 1 && hiddenB.value && cards[0].barcode === hiddenB.value && !input.disabled) {
+            selectCard(cards[0]);
+            return;
+        }
+
+        if (!cards.length) {
+            dropdown.innerHTML = '<div class="ac-empty">Không tìm thấy thẻ nào phù hợp</div>';
+            return;
+        }
+        dropdown.innerHTML = cards.map(c => {
+            const stLabel = { valid:'Hợp lệ', expired:'Hết hạn', inactive:'Vô hiệu' }[c.status] || c.statusText;
+            const stCls   = c.status;
+            return `<div class="ac-item" data-barcode="${h(c.barcode)}" data-reader="${c.readerId}"
+                         data-name="${h(c.readerName)}" data-expiry="${h(c.expiry)}" data-status="${c.status}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="fw-600">${h(c.readerName)}</span>
+                        <span class="text-secondary ms-2" style="font-size:.75rem">${h(c.barcode)}</span>
+                    </div>
+                    <span class="badge-status ${stCls}" style="position:static;font-size:.7rem;padding:.2rem .6rem;border-radius:20px">${stLabel}</span>
+                </div>
+                <div class="text-secondary" style="font-size:.75rem">Hết hạn: ${h(c.expiry)}</div>
+            </div>`;
+        }).join('');
+
+        // EC-12: append hasMore hint if list was truncated
+        if (hasMore) {
+            dropdown.innerHTML += `<div class="ac-empty" style="font-size:.75rem;color:#94a3b8;border-top:1px solid #f1f5f9;margin-top:2px">
+                <i class="fas fa-info-circle me-1"></i>Còn nhiều kết quả – hãy nhập chi tiết hơn.
+            </div>`;
+        }
+
+        dropdown.querySelectorAll('.ac-item').forEach(el => el.addEventListener('click', function() {
+            selectCard({ barcode: this.dataset.barcode, readerId: this.dataset.reader,
+                         name: this.dataset.name, expiry: this.dataset.expiry, status: this.dataset.status });
+        }));
+    }
+
+    function selectCard(c) {
+        hiddenB.value = c.barcode;
+        input.value   = `${c.name} (${c.barcode})`;
+        input.disabled = true;
+
+        selectedExpiry = c.expiry; // "dd/MM/yyyy"
+        selectedStatus = c.status;
+
+        document.getElementById('previewName').textContent    = c.name;
+        document.getElementById('previewBarcode').textContent = c.barcode;
+        document.getElementById('previewExpiry').textContent  = c.expiry;
+        const sb = document.getElementById('previewStatus');
+        sb.textContent = { valid:'Hợp lệ', expired:'Hết hạn', inactive:'Vô hiệu' }[c.status] || c.status;
+        sb.className   = `badge-status ${c.status}`;
+
+        preview.style.display = 'block';
+
+        if (c.status === 'inactive') {
+            durationSec.style.display = 'none';
+            submitSec.style.display   = 'none';
+            // Disable UI explicitly
+            durationIn.disabled = true;
+            document.getElementById('submitBtn').disabled = true;
+            alert('Thẻ gốc đang bị vô hiệu hoá. Bạn phải vào trang chi tiết độc giả để KÍCH HOẠT LẠI thẻ trước khi gia hạn.');
+        } else {
+            durationSec.style.display = 'block';
+            submitSec.style.display   = 'block';
+            durationIn.disabled = false;
+            document.getElementById('submitBtn').disabled = false;
+            updateExpiryPreview();
+            durationIn.focus();
+        }
+    }
+
+    document.getElementById('clearCard').addEventListener('click', () => {
+        hiddenB.value = ''; input.value ='';
+        input.disabled = false;
+        preview.style.display = 'none';
+        durationSec.style.display = 'none';
+        submitSec.style.display   = 'none';
+        expiryPrev.classList.remove('show');
+        selectedExpiry = null; selectedStatus = null;
+        input.focus();
+    });
+
+    // ── Duration ──────────────────────────────────────────────────
+    durationIn.addEventListener('change', updateExpiryPreview);
+
+    function updateExpiryPreview() {
+        const months = parseInt(durationIn.value);
+        if (!selectedExpiry || isNaN(months) || months <= 0 || months > 120) {
+            expiryPrev.classList.remove('show');
+            return;
+        }
+
+        // Parse dd/MM/yyyy
+        const [d, m, y] = selectedExpiry.split('/').map(Number);
+        const expDate = new Date(y, m - 1, d);
+        const today   = new Date(); today.setHours(0,0,0,0);
+
+        // Renewal logic mirrors server:
+        // still valid → base = expiry; expired → base = today
+        // inactive is blocked and shouldn't reach here
+        const isExpired = selectedStatus === 'expired';
+        const base = isExpired ? today : expDate;
+        const newExpiry = new Date(base);
+        newExpiry.setMonth(newExpiry.getMonth() + months);
+
+        newExpDisp.textContent = newExpiry.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric' });
+        expiryPrev.classList.add('show');
+    }
+
+    // ── Keyboard nav + debounce ───────────────────────────────────
+    document.addEventListener('click', e => { if (!e.target.closest('.search-box')) closeDD(); });
+    input.addEventListener('input', function() {
+        if (this.disabled) return;
+        clearTimeout(this._t); this._t = setTimeout(() => doSearch(this.value), 300);
+    });
+    input.addEventListener('keydown', e => {
+        const its = [...dropdown.querySelectorAll('.ac-item')];
+        if (!its.length) return;
+        const cur = dropdown.querySelector('.ac-item.active');
+        let idx = its.indexOf(cur);
+        if (e.key==='ArrowDown') { e.preventDefault(); cur?.classList.remove('active'); its[(idx+1)%its.length].classList.add('active'); its[(idx+1)%its.length].scrollIntoView({block:'nearest'}); }
+        else if (e.key==='ArrowUp') { e.preventDefault(); cur?.classList.remove('active'); its[(idx-1+its.length)%its.length].classList.add('active'); its[(idx-1+its.length)%its.length].scrollIntoView({block:'nearest'}); }
+        else if (e.key==='Enter' && cur) { e.preventDefault(); cur.click(); }
+        else if (e.key==='Escape') closeDD();
+    });
+
+    // ── Submit guard ──────────────────────────────────────────────
+    document.getElementById('renewForm').addEventListener('submit', function(e) {
+        const months = parseInt(durationIn.value);
+        if (!hiddenB.value) { e.preventDefault(); alert('Vui lòng chọn thẻ trước khi gia hạn.'); return; }
+        if (isNaN(months) || months <= 0) { e.preventDefault(); durationIn.classList.add('is-invalid'); durationIn.focus(); return; }
+
+        if (!confirm(`Xác nhận gia hạn thẻ cho độc giả này thêm ${months} tháng?`)) {
+            e.preventDefault();
+            return;
+        }
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Đang xử lý...';
+    });
+
+    // ── Helpers ───────────────────────────────────────────────────
+    function showLoading() { dropdown.style.display='block'; dropdown.innerHTML='<div class="ac-loading"><i class="fas fa-spinner fa-spin me-1"></i>Đang tìm...</div>'; }
+    function showHint(msg) { dropdown.style.display='block'; dropdown.innerHTML=`<div class="ac-empty" style="color:#94a3b8;font-size:.8rem">${msg}</div>`; }
+    function closeDD() { dropdown.style.display='none'; dropdown.innerHTML=''; }
+    function h(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // ── Restore state if form returned from server (validation error) ─
+    if (hiddenB.value) {
+        // If there's a prefilled barcode, auto-search to get expiry data
+        if (input.value && !input.disabled) {
+            doSearch(hiddenB.value);
+        }
+    }
+
+})();
+</script>
+}

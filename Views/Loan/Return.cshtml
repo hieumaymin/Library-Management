@@ -1,26 +1,74 @@
 @model MyLibraryDemo.Data.Models.Loan
+@{
+    ViewData["Title"] = "Trả sách";
+}
 
-<h1>Trả sách</h1>
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h4 class="mb-0 fw-bold">Xác nhận trả sách</h4>
+</div>
 
-<h3>Bạn có chắc chắn muốn đánh dấu sách này là đã trả?</h3>
+<div class="card" style="max-width:520px">
+    <div class="card-body p-4">
+        <!-- Overdue warning -->
+        @if (Model.IsOverdue)
+        {
+            <div class="alert-floating error mb-4">
+                <i class="fas fa-clock me-2"></i>
+                Sách quá hạn <strong>@Model.DaysOverdue ngày</strong>
+                (hạn: @Model.DueDate.ToString("dd/MM/yyyy"))!
+            </div>
+        }
 
-<div>
-    <h4>Phiếu mượn</h4>
-    <hr />
-    <dl class="row">
-        <dt class="col-sm-2">Tên sách</dt>
-        <dd class="col-sm-10">@Model.Book?.Title</dd>
+        <dl class="row mb-4">
+            <dt class="col-sm-4 text-secondary small">Sách</dt>
+            <dd class="col-sm-8 fw-600">@Model.Book?.Title</dd>
 
-        <dt class="col-sm-2">Độc giả</dt>
-        <dd class="col-sm-10">@Model.Reader?.Name</dd>
+            <dt class="col-sm-4 text-secondary small">Tác giả</dt>
+            <dd class="col-sm-8">@Model.Book?.Author</dd>
 
-        <dt class="col-sm-2">Ngày mượn</dt>
-        <dd class="col-sm-10">@Model.LoanDate.ToString("dd/MM/yyyy")</dd>
-    </dl>
+            <dt class="col-sm-4 text-secondary small">Độc giả</dt>
+            <dd class="col-sm-8">@Model.Reader?.Name</dd>
 
-    <form asp-action="ReturnConfirmed" asp-route-id="@Model?.Id">
-        <input type="hidden" asp-for="Id" />
-        <input type="submit" value="Xác nhận trả sách" class="btn btn-success" />
-        <a asp-action="Index" class="btn btn-secondary ml-2">Hủy</a>
-    </form>
+            <dt class="col-sm-4 text-secondary small">Ngày mượn</dt>
+            <dd class="col-sm-8">@Model.BorrowDate.ToString("dd/MM/yyyy")</dd>
+
+            <dt class="col-sm-4 text-secondary small">Hạn trả</dt>
+            <dd class="col-sm-8">
+                <span class="badge-status @(Model.IsOverdue ? "badge-danger" : "badge-info")">
+                    @Model.DueDate.ToString("dd/MM/yyyy")
+                </span>
+            </dd>
+        </dl>
+
+        <form asp-action="ReturnConfirmed" asp-route-id="@Model.Id" method="post">
+            @Html.AntiForgeryToken()
+
+            <div class="mb-3">
+                <label class="form-label">Ghi chú (tùy chọn)</label>
+                <textarea name="notes" class="form-control" rows="2" placeholder="Tình trạng sách khi trả..."></textarea>
+            </div>
+
+            <div class="mb-4">
+                <div class="form-check">
+                    <input type="checkbox" name="isLost" value="true" class="form-check-input" id="isLostCheck" />
+                    <label class="form-check-label text-danger fw-500" for="isLostCheck">
+                        <i class="fas fa-skull-crossbones me-1"></i>Đánh dấu sách bị mất
+                    </label>
+                    <div class="form-text text-danger">
+                        Nếu chọn: số lượng sách sẽ không được cộng lại và sách bị đánh dấu mất vĩnh viễn.
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-undo me-2"></i>Xác nhận trả sách
+                </button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Hủy</a>
+            </div>
+        </form>
+    </div>
 </div>

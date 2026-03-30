@@ -1,35 +1,50 @@
 @model MyLibraryDemo.Data.Models.Reader
+@using MyLibraryDemo.Data.Models
+@{
+    ViewData["Title"] = "Xóa độc giả";
+}
 
-<h1>Xóa độc giả</h1>
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h4 class="mb-0 fw-bold">Xác nhận xóa độc giả</h4>
+</div>
 
-<h3>Bạn có chắc chắn muốn xóa độc giả này?</h3>
-<div>
-   
-    <hr />
-    <dl class="row">
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Name)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Name)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Email)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Email)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.PhoneNumber)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.PhoneNumber)
-        </dd>
-    </dl>
+<div class="card" style="max-width:480px">
+    <div class="card-body p-4">
+        <div class="alert-floating error mb-4">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Hành động này không thể hoàn tác!
+        </div>
 
-    <form asp-action="Delete">
-        <input type="hidden" asp-for="Id" />
-        <input type="submit" value="Xóa" class="btn btn-danger" /> |
-        <a asp-action="Index">Về danh sách độc giả</a>
-    </form>
+        <dl class="row mb-4">
+            <dt class="col-sm-4 text-secondary small">Tên độc giả</dt>
+            <dd class="col-sm-8 fw-600">@Model.Name</dd>
+            <dt class="col-sm-4 text-secondary small">Email</dt>
+            <dd class="col-sm-8">@Model.Email</dd>
+            <dt class="col-sm-4 text-secondary small">Điện thoại</dt>
+            <dd class="col-sm-8">@Model.PhoneNumber</dd>
+            <dt class="col-sm-4 text-secondary small">Loại độc giả</dt>
+            <dd class="col-sm-8">@Model.Type</dd>
+            @if (Model.LibraryCard != null)
+            {
+                <dt class="col-sm-4 text-secondary small">Thẻ TV</dt>
+                <dd class="col-sm-8">
+                    <span class="badge-status @(Model.LibraryCard.IsValid ? "badge-success" : "badge-danger")">
+                        @Model.LibraryCard.StatusDisplay
+                    </span>
+                </dd>
+            }
+        </dl>
+
+        <form asp-action="Delete" method="post" class="d-flex gap-2">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="Id" />
+            <button type="submit" class="btn btn-danger">
+                <i class="fas fa-trash me-2"></i>Xác nhận xóa
+            </button>
+            <a asp-action="Index" class="btn btn-outline-secondary">Hủy</a>
+        </form>
+    </div>
 </div>

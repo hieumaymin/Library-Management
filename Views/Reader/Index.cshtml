@@ -1,76 +1,136 @@
 @model IEnumerable<MyLibraryDemo.Data.Models.Reader>
-
-<h1>Danh sách Độc giả</h1>
-
-@if (TempData["Success"] != null)
-{
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        @TempData["Success"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
+@using MyLibraryDemo.Data.Models
+@{
+    ViewData["Title"] = "Quản lý Độc giả";
 }
 
-@if (TempData["Error"] != null)
-{
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        @TempData["Error"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-0 fw-bold">Danh sách Độc giả</h4>
+        <small class="text-secondary">@Model.Count() độc giả</small>
     </div>
-}
-
-<p>
     <a asp-action="Create" class="btn btn-primary">
-        <i class="bi bi-plus-circle"></i> Thêm độc giả mới
+        <i class="fas fa-plus me-2"></i>Thêm độc giả
     </a>
-</p>
-
-<form asp-action="Search" method="get" class="form-inline mb-3">
-    <div class="input-group">
-        <input type="text" name="searchTerm" class="form-control" placeholder="Tìm kiếm theo tên, email, số điện thoại" />
-        <button type="submit" class="btn btn-secondary">
-            <i class="bi bi-search"></i> Tìm kiếm
-        </button>
-    </div>
-</form>
-
-<div class="table-responsive">
-    <table class="table table-bordered table-hover">
-        <thead class="table-light">
-            <tr>
-                <th>@Html.DisplayNameFor(model => model.Name)</th>
-                <th>@Html.DisplayNameFor(model => model.Email)</th>
-                <th>@Html.DisplayNameFor(model => model.PhoneNumber)</th>
-                <th>Thao tác</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in Model)
-            {
-                <tr>
-                    <td>@Html.DisplayFor(modelItem => item.Name)</td>
-                    <td>@Html.DisplayFor(modelItem => item.Email)</td>
-                    <td>@Html.DisplayFor(modelItem => item.PhoneNumber)</td>
-                    <td>
-                        <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-primary">
-                            <i class="bi bi-pencil"></i> Sửa
-                        </a>
-                        <a asp-action="Delete" asp-route-id="@item.Id" class="btn btn-sm btn-danger">
-                            <i class="bi bi-trash"></i> Xóa
-                        </a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
 </div>
 
-@section Scripts {
-    <script>
-        // Auto-hide alert after 5 seconds
-        $(document).ready(function () {
-            setTimeout(function () {
-                $(".alert").alert('close');
-            }, 5000);
-        });
-    </script>
-}
+<!-- Search -->
+<div class="card mb-3">
+    <div class="card-body py-3">
+        <form asp-action="Search" method="get" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label mb-1">Tìm kiếm</label>
+                <input type="text" name="searchTerm" class="form-control" placeholder="Tên, email, số điện thoại..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-1">Loại độc giả</label>
+                <select name="readerType" class="form-select">
+                    <option value="">-- Tất cả --</option>
+                    <option value="Student">Sinh viên</option>
+                    <option value="Lecturer">Giảng viên</option>
+                    <option value="Other">Khác</option>
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-fill">
+                    <i class="fas fa-search me-1"></i>Tìm
+                </button>
+                <a asp-action="Index" class="btn btn-outline-secondary">
+                    <i class="fas fa-rotate-right"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-custom mb-0">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Tên độc giả</th>
+                    <th>Email</th>
+                    <th>Điện thoại</th>
+                    <th>Loại</th>
+                    <th>
+                        <a asp-action="Index" asp-route-sort="borrow_desc" class="text-decoration-none text-dark d-flex align-items-center gap-1">
+                            Đang mượn <i class="fas fa-sort" style="opacity:.4"></i>
+                        </a>
+                    </th>
+                    <th>Hạn mức</th>
+                    <th>Thẻ TV</th>
+                    <th style="width:160px">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ int stt = 1; }
+                @foreach (var reader in Model)
+                {
+                    <tr>
+                        <td class="text-secondary">@(stt++)</td>
+                        <td class="fw-500">@reader.Name</td>
+                        <td>@reader.Email</td>
+                        <td>@reader.PhoneNumber</td>
+                        <td>
+                            @{
+                                var (typeCls, typeLabel) = reader.Type switch
+                                {
+                                    ReaderType.Student => ("badge-info", "Sinh viên"),
+                                    ReaderType.Lecturer => ("badge-success", "Giảng viên"),
+                                    _ => ("badge-neutral", "Khác")
+                                };
+                            }
+                            <span class="badge-status @typeCls">@typeLabel</span>
+                        </td>
+                        <td>
+                            <strong class="text-primary">@(reader.Loans?.Count(l => !l.ReturnDate.HasValue && !l.IsLost) ?? 0)</strong> cuốn
+                        </td>
+                        <td>@reader.MaxBooksAllowed cuốn</td>
+                        <td>
+                            @if (reader.LibraryCard == null)
+                            {
+                                <a asp-controller="LibraryCard" asp-action="Create"
+                                   asp-route-readerId="@reader.Id"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-plus me-1"></i>Cấp thẻ
+                                </a>
+                            }
+                            else
+                            {
+                                var card = reader.LibraryCard;
+                                <a asp-controller="LibraryCard" asp-action="Details"
+                                   asp-route-readerId="@reader.Id"
+                                   class="badge-status @(card.IsValid ? "badge-success" : "badge-danger") text-decoration-none">
+                                    <i class="fas fa-id-card me-1"></i>@card.StatusDisplay
+                                </a>
+                            }
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <a asp-action="Edit" asp-route-id="@reader.Id"
+                                   class="btn btn-sm btn-outline-primary" title="Sửa">
+                                    <i class="fas fa-pen"></i>
+                                </a>
+                                <a asp-action="Delete" asp-route-id="@reader.Id"
+                                   class="btn btn-sm btn-outline-danger" title="Xóa">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="9" class="text-center py-4 text-secondary">
+                            <i class="fas fa-users mb-2 d-block" style="font-size:2rem;opacity:.3"></i>
+                            Chưa có độc giả nào
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

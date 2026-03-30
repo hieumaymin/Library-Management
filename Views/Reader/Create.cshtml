@@ -1,37 +1,60 @@
 @model MyLibraryDemo.Data.Models.Reader
+@using MyLibraryDemo.Data.Models
+@{
+    ViewData["Title"] = "Thêm độc giả";
+}
 
-<h1>Thêm độc giả mới</h1>
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h4 class="mb-0 fw-bold">Thêm độc giả mới</h4>
+</div>
 
-<div class="row">
-    <div class="col-md-6">
+<div class="card" style="max-width:560px">
+    <div class="card-body p-4">
         <form asp-action="Create" method="post">
-            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
-            
-            <div class="form-group mb-3">
-                <label asp-for="Name" class="form-label"></label> <span class="text-danger">*</span>
-                <input asp-for="Name" class="form-control" placeholder="Nhập tên độc giả" />
-                <span asp-validation-for="Name" class="text-danger"></span>
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="alert-floating error mb-3"></div>
+
+            <div class="row g-3">
+                <div class="col-12">
+                    <label asp-for="Name" class="form-label"></label>
+                    <input asp-for="Name" class="form-control" placeholder="Họ và tên..." />
+                    <span asp-validation-for="Name" class="text-danger small"></span>
+                </div>
+
+                <div class="col-12">
+                    <label asp-for="Email" class="form-label"></label>
+                    <input asp-for="Email" class="form-control" type="email" placeholder="email@example.com" />
+                    <span asp-validation-for="Email" class="text-danger small"></span>
+                </div>
+
+                <div class="col-12">
+                    <label asp-for="PhoneNumber" class="form-label"></label>
+                    <input asp-for="PhoneNumber" class="form-control" placeholder="0xxxxxxxxx" />
+                    <span asp-validation-for="PhoneNumber" class="text-danger small"></span>
+                </div>
+
+                <div class="col-md-6">
+                    <label asp-for="Type" class="form-label"></label>
+                    <select asp-for="Type" class="form-select" id="readerTypeSelect"
+                            asp-items="Html.GetEnumSelectList<ReaderType>()"></select>
+                </div>
+
+                <div class="col-md-6">
+                    <label asp-for="MaxBooksAllowed" class="form-label"></label>
+                    <input asp-for="MaxBooksAllowed" class="form-control" type="number" min="1" max="20" id="maxBooksInput" />
+                    <span asp-validation-for="MaxBooksAllowed" class="text-danger small"></span>
+                    <div class="form-text">Tự động theo loại: SV=3, GV=5, Khác=2</div>
+                </div>
             </div>
-            
-            <div class="form-group mb-3">
-                <label asp-for="Email" class="form-label"></label> <span class="text-danger">*</span>
-                <input asp-for="Email" class="form-control" placeholder="Nhập địa chỉ email" />
-                <span asp-validation-for="Email" class="text-danger"></span>
-            </div>
-            
-            <div class="form-group mb-3">
-                <label asp-for="PhoneNumber" class="form-label"></label> <span class="text-danger">*</span>
-                <input asp-for="PhoneNumber" class="form-control" placeholder="Nhập số điện thoại" />
-                <span asp-validation-for="PhoneNumber" class="text-danger"></span>
-            </div>
-            
-            <div class="form-group mt-4">
+
+            <div class="d-flex gap-2 mt-4">
                 <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-save"></i> Thêm độc giả
+                    <i class="fas fa-save me-2"></i>Lưu độc giả
                 </button>
-                <a asp-action="Index" class="btn btn-secondary">
-                    <i class="bi bi-arrow-left"></i> Quay lại
-                </a>
+                <a asp-action="Index" class="btn btn-outline-secondary">Hủy</a>
             </div>
         </form>
     </div>
@@ -40,41 +63,10 @@
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
     <script>
-        $(document).ready(function () {
-            $.validator.setDefaults({
-                ignore: [],
-                errorElement: "span",
-                errorClass: "text-danger"
-            });
-
-            $("form").validate({
-                rules: {
-                    Name: "required",
-                    Email: {
-                        required: true,
-                        email: true
-                    },
-                    PhoneNumber: {
-                        required: true,
-                        digits: true,
-                        minlength: 10,
-                        maxlength: 11
-                    }
-                },
-                messages: {
-                    Name: "Vui lòng nhập tên độc giả",
-                    Email: {
-                        required: "Vui lòng nhập địa chỉ email",
-                        email: "Địa chỉ email không hợp lệ"
-                    },
-                    PhoneNumber: {
-                        required: "Vui lòng nhập số điện thoại",
-                        digits: "Số điện thoại chỉ được chứa chữ số",
-                        minlength: "Số điện thoại phải có ít nhất 10 chữ số",
-                        maxlength: "Số điện thoại không được vượt quá 11 chữ số"
-                    }
-                }
-            });
+        // Auto-set MaxBooksAllowed when ReaderType changes
+        const defaults = { 'Student': 3, 'Lecturer': 5, 'Other': 2 };
+        document.getElementById('readerTypeSelect').addEventListener('change', function () {
+            document.getElementById('maxBooksInput').value = defaults[this.value] ?? 3;
         });
     </script>
 }

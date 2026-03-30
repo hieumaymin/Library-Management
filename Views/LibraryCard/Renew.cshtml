@@ -1,0 +1,57 @@
+@model MyLibraryDemo.Data.Models.LibraryCard
+@{
+    ViewData["Title"] = "Gia hạn thẻ";
+}
+
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a asp-action="Details" asp-route-readerId="@Model.ReaderId" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h4 class="mb-0 fw-bold">Gia hạn thẻ thư viện</h4>
+</div>
+
+<div class="card" style="max-width:480px">
+    <div class="card-body p-4">
+        <div class="alert-floating warning mb-4">
+            <i class="fas fa-info-circle me-2"></i>
+            Vui lòng chọn thời hạn gia hạn cho thẻ thư viện.
+        </div>
+
+        <dl class="row mb-4">
+            <dt class="col-sm-5 text-secondary small">Độc giả</dt>
+            <dd class="col-sm-7 fw-600">@Model.Reader?.Name</dd>
+            <dt class="col-sm-5 text-secondary small">Mã thẻ</dt>
+            <dd class="col-sm-7">@Model.Barcode</dd>
+            <dt class="col-sm-5 text-secondary small">Hạn hiện tại</dt>
+            <dd class="col-sm-7">
+                <span class="badge-status @(Model.IsExpired ? "badge-danger" : "badge-warning")">
+                    @Model.ExpiryDate.ToString("dd/MM/yyyy")
+                </span>
+            </dd>
+            <dt class="col-sm-5 text-secondary small align-self-center">Thời hạn gia hạn</dt>
+            <dd class="col-sm-7 fw-600 text-success mb-0">
+                <select name="durationMonths" class="form-select w-auto">
+                    @foreach (var m in MyLibraryDemo.Services.RenewalDuration.AllowedMonths)
+                    {
+                        if (m == 12)
+                        {
+                            <option value="@m" selected>@m tháng</option>
+                        }
+                        else
+                        {
+                            <option value="@m">@m tháng</option>
+                        }
+                    }
+                </select>
+            </dd>
+        </dl>
+
+        <form asp-action="Renew" asp-route-id="@Model.Id" method="post" class="d-flex gap-2" onsubmit="return confirm('Xác nhận gia hạn cho thẻ này?');">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-rotate-right me-2"></i>Xác nhận gia hạn
+            </button>
+            <a asp-action="Details" asp-route-readerId="@Model.ReaderId" class="btn btn-outline-secondary">Hủy</a>
+        </form>
+    </div>
+</div>

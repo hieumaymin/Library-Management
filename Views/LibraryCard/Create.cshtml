@@ -1,0 +1,74 @@
+@model MyLibraryDemo.Data.Models.LibraryCard
+@{
+    ViewData["Title"] = "Cấp thẻ thư viện";
+}
+
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a asp-controller="Reader" asp-action="Index" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h4 class="mb-0 fw-bold">Cấp thẻ thư viện</h4>
+</div>
+
+<div class="card" style="max-width:480px">
+    <div class="card-body p-4">
+        <form asp-action="Create" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="ReaderId" />
+            <div asp-validation-summary="ModelOnly" class="alert-floating error mb-3"></div>
+
+            <div class="row g-3">
+                <div class="col-12">
+                    <label asp-for="Barcode" class="form-label"></label>
+                    <div class="input-group">
+                        <input asp-for="Barcode" class="form-control" id="barcodeInput" placeholder="Mã thẻ..." />
+                        <button type="button" class="btn btn-outline-secondary" onclick="regenerateBarcode()">
+                            <i class="fas fa-rotate-right"></i>
+                        </button>
+                    </div>
+                    <span asp-validation-for="Barcode" class="text-danger small"></span>
+                </div>
+
+                <div class="col-md-6">
+                    <label asp-for="IssueDate" class="form-label"></label>
+                    <input asp-for="IssueDate" class="form-control" type="date" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Thời hạn cấp thẻ</label>
+                    <select name="durationMonths" class="form-select">
+                        @foreach (var m in MyLibraryDemo.Services.RenewalDuration.AllowedMonths)
+                        {
+                            if (12 == m)
+                            {
+                                <option value="@m" selected>@m tháng</option>
+                            }
+                            else
+                            {
+                                <option value="@m">@m tháng</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-id-card me-2"></i>Cấp thẻ
+                </button>
+                <a asp-controller="Reader" asp-action="Index" class="btn btn-outline-secondary">Hủy</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        function regenerateBarcode() {
+            const ts = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 12);
+            const rnd = Math.floor(Math.random() * 900) + 100;
+            document.getElementById('barcodeInput').value = 'LIB' + ts + rnd;
+        }
+    </script>
+}

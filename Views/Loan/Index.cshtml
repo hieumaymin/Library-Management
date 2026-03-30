@@ -1,70 +1,131 @@
 @model IEnumerable<MyLibraryDemo.Data.Models.Loan>
-
-<h1>Danh sách Phiếu mượn</h1>
-
-@if (TempData["Success"] != null)
-{
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        @TempData["Success"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
+@using MyLibraryDemo.Data.Models
+@{
+    ViewData["Title"] = "Quản lý Mượn / Trả";
 }
 
-<p>
-    <a asp-action="Create" class="btn btn-primary">Tạo phiếu mượn mới</a>
-</p>
-
-<form asp-action="Search" method="get" class="form-inline mb-3">
-    <input type="text" name="bookTitle" class="form-control mr-2" placeholder="Tìm theo tên sách" />
-    <input type="text" name="readerName" class="form-control mr-2" placeholder="Tìm theo tên độc giả" />
-    <select name="status" class="form-control mr-2">
-        <option value="">Tất cả trạng thái</option>
-        <option value="chưa trả">Chưa trả</option>
-        <option value="đã trả">Đã trả</option>
-    </select>
-    <button type="submit" class="btn btn-secondary">Tìm kiếm</button>
-</form>
-
-<div class="table-responsive">
-    <table class="table table-bordered table-hover">
-        <thead class="table-light">
-            <tr>
-                <th>Tên sách</th>
-                <th>Độc giả</th>
-                <th>Ngày mượn</th>
-                <th>Ngày trả</th>
-                <th>Trạng thái</th>
-                <th>Thao tác</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in Model)
-            {
-                <tr>
-                    <td>@item.Book?.Title</td>
-                    <td>@item.Reader?.Name</td>
-                    <td>@item.LoanDate.ToString("dd/MM/yyyy")</td>
-                    <td>@(item.ReturnDate?.ToString("dd/MM/yyyy") ?? "-")</td>
-                    <td>@(item.ReturnDate.HasValue ? "Đã trả" : "Chưa trả")</td>
-                    <td>
-                        @if (!item.ReturnDate.HasValue)
-                        {
-                            <a asp-action="Return" asp-route-id="@item.Id" class="btn btn-sm btn-success">Trả sách</a>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-0 fw-bold">Danh sách Phiếu mượn</h4>
+        <small class="text-secondary">@Model.Count() phiếu</small>
+    </div>
+    <a asp-action="Create" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>Tạo phiếu mượn
+    </a>
 </div>
 
-@section Scripts {
-    <script>
-        // Auto-hide alert after 5 seconds
-        $(document).ready(function () {
-            setTimeout(function () {
-                $(".alert").alert('close');
-            }, 5000);
-        });
-    </script>
-}
+<!-- Search -->
+<div class="card mb-3">
+    <div class="card-body py-3">
+        <form asp-action="Search" method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label mb-1">Tên sách</label>
+                <input type="text" name="bookTitle" class="form-control" placeholder="Tìm theo tên sách..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-1">Độc giả</label>
+                <input type="text" name="readerName" class="form-control" placeholder="Tìm theo tên độc giả..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-1">Trạng thái</label>
+                <select name="status" class="form-select">
+                    <option value="">-- Tất cả --</option>
+                    <option value="active">Đang mượn</option>
+                    <option value="overdue">Quá hạn</option>
+                    <option value="returned">Đã trả</option>
+                    <option value="lost">Mất sách</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-fill">
+                    <i class="fas fa-search me-1"></i>Tìm
+                </button>
+                <a asp-action="Index" class="btn btn-outline-secondary">
+                    <i class="fas fa-rotate-right"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-custom mb-0">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Sách</th>
+                    <th>Độc giả</th>
+                    <th>Ngày mượn</th>
+                    <th>Hạn trả</th>
+                    <th>Ngày trả</th>
+                    <th>Trạng thái</th>
+                    <th style="width:100px">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ int stt = 1; }
+                @foreach (var loan in Model)
+                {
+                    <tr>
+                        <td class="text-secondary">@(stt++)</td>
+                        <td>@loan.Book?.Title</td>
+                        <td>@loan.Reader?.Name</td>
+                        <td>@loan.BorrowDate.ToString("dd/MM/yy")</td>
+                        <td>
+                            @if (loan.IsOverdue && !loan.IsReturned)
+                            {
+                                <span class="badge-status badge-danger">@loan.DueDate.ToString("dd/MM/yy")</span>
+                            }
+                            else
+                            {
+                                <span>@loan.DueDate.ToString("dd/MM/yy")</span>
+                            }
+                        </td>
+                        <td>
+                            @if (loan.ReturnDate.HasValue)
+                            {
+                                @loan.ReturnDate.Value.ToString("dd/MM/yy")
+                            }
+                            else
+                            {
+                                <span class="text-secondary">–</span>
+                            }
+                        </td>
+                        <td>
+                            @{
+                                var (sCls, sLabel) = loan.Status switch
+                                {
+                                    "Đã trả" => ("badge-success", loan.Status),
+                                    "Mất sách" => ("badge-danger", loan.Status),
+                                    var s when s.StartsWith("Quá hạn") => ("badge-danger", loan.Status),
+                                    _ => ("badge-info", loan.Status)
+                                };
+                            }
+                            <span class="badge-status @sCls">@sLabel</span>
+                        </td>
+                        <td>
+                            @if (!loan.IsReturned && !loan.IsLost)
+                            {
+                                <a asp-action="Return" asp-route-id="@loan.Id"
+                                   class="btn btn-sm btn-outline-success" title="Trả sách">
+                                    <i class="fas fa-undo"></i> Trả
+                                </a>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="8" class="text-center py-4 text-secondary">
+                            <i class="fas fa-handshake mb-2 d-block" style="font-size:2rem;opacity:.3"></i>
+                            Không có phiếu mượn nào
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

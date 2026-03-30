@@ -1,76 +1,362 @@
 @model MyLibraryDemo.Data.Models.Loan
+@{
+    ViewData["Title"] = "Tạo phiếu mượn";
+}
 
-<h1>Tạo phiếu mượn mới</h1>
+<style>
+    .search-box { position: relative; }
+    .search-box input { padding-left: 2.4rem; }
+    .search-box .search-icon {
+        position: absolute; left: .75rem; top: 50%;
+        transform: translateY(-50%); color: var(--text-secondary, #64748b);
+        pointer-events: none; font-size: .85rem;
+    }
+    .autocomplete-dropdown {
+        position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 1050;
+        max-height: 280px; overflow-y: auto; overflow-x: hidden;
+    }
+    .autocomplete-dropdown .ac-item {
+        padding: .65rem 1rem; cursor: pointer;
+        border-bottom: 1px solid #f1f5f9; transition: background .1s; font-size: .875rem;
+    }
+    .autocomplete-dropdown .ac-item:last-child { border-bottom: none; }
+    .autocomplete-dropdown .ac-item:hover,
+    .autocomplete-dropdown .ac-item.active { background: #f0f7ff; }
+    .autocomplete-dropdown .ac-item.disabled { opacity: .5; cursor: not-allowed; background: #fafafa; }
+    .autocomplete-dropdown .ac-empty,
+    .autocomplete-dropdown .ac-loading { padding: .75rem 1rem; color: #94a3b8; font-size: .875rem; text-align: center; }
+    .selected-card {
+        background: #f0f7ff; border: 1.5px solid #bfdbfe; border-radius: 10px;
+        padding: .75rem 1rem; margin-top: .5rem; font-size: .875rem;
+        display: none; animation: fadeIn .15s ease;
+    }
+    .selected-card.show { display: flex; align-items: center; gap: .75rem; }
+    .selected-card .sc-icon {
+        width: 36px; height: 36px; border-radius: 8px; background: #2563eb;
+        color: white; display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; font-size: .9rem;
+    }
+    .selected-card .sc-clear { margin-left: auto; color: #94a3b8; cursor: pointer; background: none; border: none; padding: 0; font-size: .9rem; }
+    .selected-card .sc-clear:hover { color: #ef4444; }
+    .card-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .7rem; font-weight: 600; }
+    .card-badge.valid    { background: #d1fae5; color: #065f46; }
+    .card-badge.expired  { background: #fef3c7; color: #92400e; }
+    .card-badge.inactive { background: #fee2e2; color: #991b1b; }
+    .card-badge.none     { background: #f1f5f9; color: #64748b; }
+    .qty-badge { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 20px; font-size: .7rem; font-weight: 600; }
+    .qty-badge.zero { background: #fee2e2; color: #991b1b; }
+    @@keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+</style>
 
-<div class="row">
-    <div class="col-md-6">
-        <form asp-action="Create" method="post">
-            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
-            
-            <div class="form-group mb-3">
-                <label asp-for="BookId" class="form-label"></label> <span class="text-danger">*</span>
-                <select asp-for="BookId" class="form-select">
-                    <option value="">-- Chọn sách --</option>
-                    @foreach (var item in (SelectList)ViewBag.BookId)
+<div class="d-flex align-items-center gap-2 mb-4">
+    <a asp-action="Index" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h4 class="mb-0 fw-bold">Tạo phiếu mượn</h4>
+</div>
+
+<div class="card" style="max-width:580px">
+    <div class="card-body p-4">
+        <div class="alert-floating warning mb-4" style="font-size:.82rem">
+            <i class="fas fa-info-circle me-1"></i>
+            Hạn trả mặc định: <strong>14 ngày</strong> &nbsp;|&nbsp;
+            Độc giả phải có <strong>thẻ thư viện hợp lệ</strong>.
+        </div>
+
+        <form asp-action="Create" method="post" id="borrowForm">
+            @Html.AntiForgeryToken()
+
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div class="alert-floating error mb-3">
+                    <i class="fas fa-times-circle me-2"></i>
+                    @foreach (var entry in ViewData.ModelState.Values)
                     {
-                        <option value="@item.Value">@item.Text</option>
+                        foreach (var error in entry.Errors)
+                        {
+                            <div>@error.ErrorMessage</div>
+                        }
                     }
-                </select>
-                <span asp-validation-for="BookId" class="text-danger"></span>
+                </div>
+            }
+
+            <!-- READER SEARCH -->
+            <div class="mb-4">
+                <label class="form-label fw-500">
+                    <i class="fas fa-user me-1 text-primary"></i> Tìm độc giả
+                </label>
+                <div class="form-text mb-2" style="margin-top:-.25rem">
+                    Nhập tên hoặc mã thẻ (barcode) – tối thiểu 2 ký tự
+                </div>
+                <input type="hidden" name="ReaderId" id="hiddenReaderId" value="@(Model?.ReaderId > 0 ? Model.ReaderId : 0)" />
+                <div class="search-box">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="readerSearchInput" class="form-control"
+                           placeholder="VD: Nguyễn Văn A hoặc LIB20260101..."
+                           autocomplete="off" />
+                    <div class="autocomplete-dropdown" id="readerDropdown" style="display:none"></div>
+                </div>
+                <div class="selected-card" id="readerSelectedCard">
+                    <div class="sc-icon"><i class="fas fa-user"></i></div>
+                    <div>
+                        <div class="fw-600" id="readerSelectedName">–</div>
+                        <div class="text-secondary" style="font-size:.78rem">
+                            <span id="readerSelectedEmail"></span>
+                            &nbsp;<span id="readerCardBadge" class="card-badge"></span>
+                            &nbsp;<span id="readerBorrowCount" style="display:none;font-size:.7rem;color:#64748b"></span>
+                        </div>
+                    </div>
+                    <button type="button" class="sc-clear" id="clearReader">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </div>
+                <div class="text-danger small mt-1" id="readerError" style="display:none">Vui lòng chọn độc giả.</div>
             </div>
-            
-            <div class="form-group mb-3">
-                <label asp-for="ReaderId" class="form-label"></label> <span class="text-danger">*</span>
-                <select asp-for="ReaderId" class="form-select">
-                    <option value="">-- Chọn độc giả --</option>
-                    @foreach (var item in (SelectList)ViewBag.ReaderId)
-                    {
-                        <option value="@item.Value">@item.Text</option>
-                    }
-                </select>
-                <span asp-validation-for="ReaderId" class="text-danger"></span>
+
+            <!-- BOOK SEARCH -->
+            <div class="mb-4">
+                <label class="form-label fw-500">
+                    <i class="fas fa-book me-1 text-primary"></i> Tìm sách
+                </label>
+                <div class="form-text mb-2" style="margin-top:-.25rem">
+                    Nhập một phần tên sách – tối thiểu 2 ký tự
+                </div>
+                <input type="hidden" name="BookId" id="hiddenBookId" value="@(Model?.BookId > 0 ? Model.BookId : 0)" />
+                <div class="search-box">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="bookSearchInput" class="form-control"
+                           placeholder="VD: Lập trình C#..."
+                           autocomplete="off" />
+                    <div class="autocomplete-dropdown" id="bookDropdown" style="display:none"></div>
+                </div>
+                <div class="selected-card" id="bookSelectedCard">
+                    <div class="sc-icon" style="background:#0f172a"><i class="fas fa-book"></i></div>
+                    <div>
+                        <div class="fw-600" id="bookSelectedTitle">–</div>
+                        <div class="text-secondary" style="font-size:.78rem">
+                            <span id="bookSelectedAuthor"></span>&nbsp;&nbsp;
+                            <span id="bookQtyBadge" class="qty-badge"></span>
+                        </div>
+                    </div>
+                    <button type="button" class="sc-clear" id="clearBook">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </div>
+                <div class="text-danger small mt-1" id="bookError" style="display:none">Vui lòng chọn sách.</div>
             </div>
-            
-            <div class="form-group mb-3">
-                <label asp-for="LoanDate" class="form-label"></label> <span class="text-danger">*</span>
-                <input asp-for="LoanDate" class="form-control" type="date" value="@DateTime.Now.ToString("yyyy-MM-dd")" />
-                <span asp-validation-for="LoanDate" class="text-danger"></span>
-            </div>
-            
-            <div class="form-group mt-4">
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-save"></i> Tạo phiếu mượn
+
+            <!-- SUBMIT -->
+            <div class="d-flex gap-2 pt-2">
+                <button type="button" class="btn btn-primary" id="submitBtn">
+                    <i class="fas fa-handshake me-2"></i>Tạo phiếu mượn
                 </button>
-                <a asp-action="Index" class="btn btn-secondary">
-                    <i class="bi bi-arrow-left"></i> Quay lại
-                </a>
+                <a asp-action="Index" class="btn btn-outline-secondary">Hủy</a>
             </div>
         </form>
     </div>
 </div>
 
 @section Scripts {
-    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
-    <script>
-        $(document).ready(function () {
-            $.validator.setDefaults({
-                ignore: [],
-                errorElement: "span",
-                errorClass: "text-danger"
-            });
+<script>
+(function () {
+    'use strict';
 
-            $("form").validate({
-                rules: {
-                    BookId: "required",
-                    ReaderId: "required",
-                    LoanDate: "required"
-                },
-                messages: {
-                    BookId: "Vui lòng chọn sách",
-                    ReaderId: "Vui lòng chọn độc giả",
-                    LoanDate: "Vui lòng chọn ngày mượn"
-                }
-            });
-        });
-    </script>
+    // ── AbortControllers – FIX race condition ─────────────────────
+    let readerAbort = null, bookAbort = null;
+
+    const readerInput    = document.getElementById('readerSearchInput');
+    const readerDropdown = document.getElementById('readerDropdown');
+    const hiddenReader   = document.getElementById('hiddenReaderId');
+    const readerCard     = document.getElementById('readerSelectedCard');
+    const readerError    = document.getElementById('readerError');
+
+    const bookInput    = document.getElementById('bookSearchInput');
+    const bookDropdown = document.getElementById('bookDropdown');
+    const hiddenBook   = document.getElementById('hiddenBookId');
+    const bookCard     = document.getElementById('bookSelectedCard');
+    const bookError    = document.getElementById('bookError');
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.search-box')) closeAll();
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // READER SEARCH
+    // ─────────────────────────────────────────────────────────────
+    async function fetchReaders(term) {
+        if (term.trim().length < 2) {
+            term.trim().length === 1
+                ? showHint(readerDropdown, '<i class="fas fa-keyboard me-1"></i>Nhập tối thiểu 2 ký tự...')
+                : closeDD(readerDropdown);
+            return;
+        }
+        if (readerAbort) readerAbort.abort();
+        readerAbort = new AbortController();
+        showLoading(readerDropdown);
+        try {
+            const res = await fetch(`/Loan/SearchReaders?term=${encodeURIComponent(term)}`, { signal: readerAbort.signal });
+            renderReaders(await res.json());
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            readerDropdown.style.display = 'block';
+            readerDropdown.innerHTML = `<div class="ac-empty"><i class="fas fa-exclamation-circle me-1"></i>Lỗi kết nối. <button class="btn btn-link btn-sm p-0 ms-1" onclick="window._rr()">Thử lại</button></div>`;
+        }
+    }
+    window._rr = () => fetchReaders(readerInput.value);
+
+    function renderReaders(readers) {
+        readerDropdown.style.display = 'block';
+        if (!readers.length) { readerDropdown.innerHTML = '<div class="ac-empty">Không tìm thấy độc giả nào</div>'; return; }
+        readerDropdown.innerHTML = readers.map(r => {
+            const bl = { valid:'Thẻ hợp lệ', expired:'Thẻ hết hạn', inactive:'Thẻ vô hiệu', none:'Chưa có thẻ' }[r.cardStatus] || '';
+            const ex = r.cardExpiry ? ` (${r.cardExpiry})` : '';
+            const dis = r.cardStatus !== 'valid' || r.atLimit;
+            const bi  = r.maxAllowed != null ? `<span class="text-secondary ms-2" style="font-size:.7rem">${r.currentBorrows}/${r.maxAllowed} cuốn</span>` : '';
+            const lb  = r.atLimit ? `<span class="card-badge ms-1" style="background:#fee2e2;color:#991b1b">Đủ hạn mức</span>` : '';
+            return `<div class="ac-item${dis?' disabled':''}" data-id="${r.id}" data-name="${h(r.name)}" data-email="${h(r.email)}" data-barcode="${r.barcode||''}" data-cs="${r.cardStatus}" data-ce="${r.cardExpiry||''}" data-cur="${r.currentBorrows}" data-max="${r.maxAllowed}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div><span class="fw-600">${h(r.name)}</span>${r.barcode?`<span class="text-secondary ms-2" style="font-size:.75rem">${h(r.barcode)}</span>`:''}${bi}</div>
+                    <div><span class="card-badge ${r.cardStatus}">${bl}${ex}</span>${lb}</div>
+                </div>
+                <div class="text-secondary" style="font-size:.75rem">${h(r.email)}</div>
+            </div>`;
+        }).join('');
+        readerDropdown.querySelectorAll('.ac-item:not(.disabled)').forEach(el => el.addEventListener('click', function() {
+            selectReader({ id:this.dataset.id, name:this.dataset.name, email:this.dataset.email,
+                cs:this.dataset.cs, ce:this.dataset.ce, barcode:this.dataset.barcode,
+                cur:this.dataset.cur, max:this.dataset.max });
+        }));
+    }
+
+    function selectReader(r) {
+        hiddenReader.value = r.id;
+        readerInput.value  = r.name + (r.barcode ? ` (${r.barcode})` : '');
+        readerInput.disabled = true;
+        document.getElementById('readerSelectedName').textContent  = r.name;
+        document.getElementById('readerSelectedEmail').textContent = r.email;
+        const badge = document.getElementById('readerCardBadge');
+        badge.textContent = { valid:'Thẻ hợp lệ', expired:'Thẻ hết hạn', inactive:'Thẻ vô hiệu', none:'Chưa có thẻ' }[r.cs] || '';
+        badge.className   = `card-badge ${r.cs}`;
+        const bc = document.getElementById('readerBorrowCount');
+        if (r.max) { bc.textContent = `Đang mượn: ${r.cur}/${r.max} cuốn`; bc.style.display = 'inline'; }
+        readerCard.classList.add('show');
+        readerError.style.display = 'none';
+        closeDD(readerDropdown);
+        // Refresh book results to show already-borrowed flags
+        if (bookInput.value.trim().length >= 2 && hiddenBook.value === '0') fetchBooks(bookInput.value);
+    }
+
+    document.getElementById('clearReader').addEventListener('click', () => {
+        hiddenReader.value = '0'; readerInput.value = ''; readerInput.disabled = false;
+        readerCard.classList.remove('show'); readerInput.focus(); readerInput.select();
+    });
+    readerInput.addEventListener('input', function() {
+        if (hiddenReader.value !== '0') return;
+        clearTimeout(this._t); this._t = setTimeout(() => fetchReaders(this.value), 300);
+    });
+    readerInput.addEventListener('keydown', e => nav(e, readerDropdown, i => i.click()));
+
+    // ─────────────────────────────────────────────────────────────
+    // BOOK SEARCH
+    // ─────────────────────────────────────────────────────────────
+    async function fetchBooks(term) {
+        if (term.trim().length < 2) {
+            term.trim().length === 1
+                ? showHint(bookDropdown, '<i class="fas fa-keyboard me-1"></i>Nhập tối thiểu 2 ký tự...')
+                : closeDD(bookDropdown);
+            return;
+        }
+        if (bookAbort) bookAbort.abort();
+        bookAbort = new AbortController();
+        showLoading(bookDropdown);
+        const rid = hiddenReader.value !== '0' ? `&readerId=${hiddenReader.value}` : '';
+        try {
+            const res = await fetch(`/Loan/SearchBooks?term=${encodeURIComponent(term)}${rid}`, { signal: bookAbort.signal });
+            renderBooks(await res.json());
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            bookDropdown.style.display = 'block';
+            bookDropdown.innerHTML = `<div class="ac-empty"><i class="fas fa-exclamation-circle me-1"></i>Lỗi kết nối. <button class="btn btn-link btn-sm p-0 ms-1" onclick="window._rb()">Thử lại</button></div>`;
+        }
+    }
+    window._rb = () => fetchBooks(bookInput.value);
+
+    function renderBooks(books) {
+        bookDropdown.style.display = 'block';
+        if (!books.length) { bookDropdown.innerHTML = '<div class="ac-empty">Không tìm thấy sách nào (hoặc tất cả đã mất/hư hỏng)</div>'; return; }
+        bookDropdown.innerHTML = books.map(b => {
+            const ql = b.quantity > 0 ? `Còn ${b.quantity} bản` : 'Hết sách';
+            const qc = b.quantity > 0 ? '' : 'zero';
+            const cl = b.category ? `<span class="text-secondary ms-1">[${h(b.category)}]</span>` : '';
+            const dis = !b.available || b.alreadyBorrowed;
+            const ab  = b.alreadyBorrowed ? `<span class="qty-badge zero ms-1">Đang mượn</span>` : '';
+            return `<div class="ac-item${dis?' disabled':''}" data-id="${b.id}" data-title="${h(b.title)}" data-author="${h(b.author)}" data-qty="${b.quantity}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div><span class="fw-600">${h(b.title)}</span>${cl}</div>
+                    <div><span class="qty-badge ${qc}">${ql}</span>${ab}</div>
+                </div>
+                <div class="text-secondary" style="font-size:.75rem">${h(b.author)}</div>
+            </div>`;
+        }).join('');
+        bookDropdown.querySelectorAll('.ac-item:not(.disabled)').forEach(el => el.addEventListener('click', function() {
+            selectBook({ id:this.dataset.id, title:this.dataset.title, author:this.dataset.author, qty:this.dataset.qty });
+        }));
+    }
+
+    function selectBook(b) {
+        hiddenBook.value = b.id; bookInput.value = b.title; bookInput.disabled = true;
+        document.getElementById('bookSelectedTitle').textContent  = b.title;
+        document.getElementById('bookSelectedAuthor').textContent = b.author;
+        const q = document.getElementById('bookQtyBadge');
+        q.textContent = `Còn ${b.qty} bản`; q.className = `qty-badge${parseInt(b.qty)===0?' zero':''}`;
+        bookCard.classList.add('show'); bookError.style.display = 'none'; closeDD(bookDropdown);
+    }
+
+    document.getElementById('clearBook').addEventListener('click', () => {
+        hiddenBook.value = '0'; bookInput.value = ''; bookInput.disabled = false;
+        bookCard.classList.remove('show'); bookInput.focus(); bookInput.select();
+    });
+    bookInput.addEventListener('input', function() {
+        if (hiddenBook.value !== '0') return;
+        clearTimeout(this._t); this._t = setTimeout(() => fetchBooks(this.value), 300);
+    });
+    bookInput.addEventListener('keydown', e => nav(e, bookDropdown, i => i.click()));
+
+    // ─── SUBMIT – FIX double-click guard ─────────────────────────
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.addEventListener('click', () => {
+        let ok = true;
+        if (!hiddenReader.value || hiddenReader.value === '0') { readerError.style.display='block'; ok=false; }
+        if (!hiddenBook.value   || hiddenBook.value   === '0') { bookError.style.display='block';   ok=false; }
+        if (ok) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Đang xử lý...';
+            document.getElementById('borrowForm').submit();
+        }
+    });
+
+    // ─── Keyboard navigation ──────────────────────────────────────
+    function nav(e, dd, onEnter) {
+        const its = [...dd.querySelectorAll('.ac-item:not(.disabled)')];
+        if (!its.length) return;
+        const cur = dd.querySelector('.ac-item.active');
+        let idx = its.indexOf(cur);
+        if (e.key==='ArrowDown') { e.preventDefault(); cur?.classList.remove('active'); its[(idx+1)%its.length].classList.add('active'); its[(idx+1)%its.length].scrollIntoView({block:'nearest'}); }
+        else if (e.key==='ArrowUp') { e.preventDefault(); cur?.classList.remove('active'); its[(idx-1+its.length)%its.length].classList.add('active'); its[(idx-1+its.length)%its.length].scrollIntoView({block:'nearest'}); }
+        else if (e.key==='Enter' && cur) { e.preventDefault(); onEnter(cur); }
+        else if (e.key==='Escape') closeDD(dd);
+    }
+
+    // ─── Utils ───────────────────────────────────────────────────
+    function showLoading(d) { d.style.display='block'; d.innerHTML='<div class="ac-loading"><i class="fas fa-spinner fa-spin me-1"></i>Đang tìm...</div>'; }
+    function showHint(d,m) { d.style.display='block'; d.innerHTML=`<div class="ac-empty" style="color:#94a3b8;font-size:.8rem">${m}</div>`; }
+    function closeDD(d) { d.style.display='none'; d.innerHTML=''; }
+    function closeAll() { document.querySelectorAll('.autocomplete-dropdown').forEach(closeDD); }
+    function h(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+})();
+</script>
 }

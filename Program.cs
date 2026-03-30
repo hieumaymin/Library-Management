@@ -1,17 +1,22 @@
 using Microsoft.EntityFrameworkCore;
 using MyLibraryDemo.Data;
+using MyLibraryDemo.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Database
 builder.Services.AddDbContext<LibraryDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Services
+builder.Services.AddScoped<IBorrowService, BorrowService>();
+builder.Services.AddScoped<ICardService, CardService>();
+
 
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -20,11 +25,11 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseRouting();
-app.UseAuthorization(); // Nếu bạn có sử dụng xác thực
+app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+
 app.Run();

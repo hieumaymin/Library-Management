@@ -1,87 +1,156 @@
 @model IEnumerable<MyLibraryDemo.Data.Models.Book>
-
-<h1>Danh sách Sách</h1>
-
-@if (TempData["Success"] != null)
-{
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        @TempData["Success"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
+@using MyLibraryDemo.Data.Models
+@{
+    ViewData["Title"] = "Quản lý Sách";
 }
 
-@if (TempData["Error"] != null)
-{
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        @TempData["Error"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<!-- Header + Actions -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-0 fw-bold">Danh sách Sách</h4>
+        <small class="text-secondary">@Model.Count() đầu sách</small>
     </div>
-}
-
-<p>
     <a asp-action="Create" class="btn btn-primary">
-        <i class="bi bi-plus-circle"></i> Thêm sách mới
+        <i class="fas fa-plus me-2"></i>Thêm sách
     </a>
-</p>
-
-<form asp-action="Search" method="get" class="form-inline mb-3">
-    <div class="input-group">
-        <input type="text" name="searchTerm" class="form-control" placeholder="Tìm kiếm theo tên sách, tác giả, năm xuất bản" />
-        <button type="submit" class="btn btn-secondary">
-            <i class="bi bi-search"></i> Tìm kiếm
-        </button>
-    </div>
-</form>
-
-<div class="table-responsive">
-    <table class="table table-bordered table-hover">
-        <thead class="table-light">
-            <tr>
-                <th>@Html.DisplayNameFor(model => model.Title)</th>
-                <th>@Html.DisplayNameFor(model => model.Author)</th>
-                <th>@Html.DisplayNameFor(model => model.PublicationYear)</th>
-                <th>@Html.DisplayNameFor(model => model.IsAvailable)</th>
-                <th>Thao tác</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in Model)
-            {
-                <tr>
-                    <td>@Html.DisplayFor(modelItem => item.Title)</td>
-                    <td>@Html.DisplayFor(modelItem => item.Author)</td>
-                    <td>@Html.DisplayFor(modelItem => item.PublicationYear)</td>
-                    <td>
-                        @if (item.IsAvailable)
-                        {
-                            <span class="badge bg-success">Có sẵn</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-danger">Đang mượn</span>
-                        }
-                    </td>
-                    <td>
-                        <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-primary">
-                            <i class="bi bi-pencil"></i> Sửa
-                        </a>
-                        <a asp-action="Delete" asp-route-id="@item.Id" class="btn btn-sm btn-danger">
-                            <i class="bi bi-trash"></i> Xóa
-                        </a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
 </div>
 
-@section Scripts {
-    <script>
-        // Auto-hide alert after 5 seconds
-        $(document).ready(function () {
-            setTimeout(function () {
-                $(".alert").alert('close');
-            }, 5000);
-        });
-    </script>
-}
+<!-- Search & Filter -->
+<div class="card mb-3">
+    <div class="card-body py-3">
+        <form asp-action="Index" method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label mb-1">Tìm kiếm</label>
+                <input type="text" name="searchTerm" class="form-control" placeholder="Tên sách, tác giả, NXB..." value="@ViewBag.CurrentSearchTerm" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-1">Thể loại</label>
+                <select name="category" class="form-select">
+                    <option value="">-- Tất cả --</option>
+                    @foreach (var cat in (ViewBag.Categories as List<string> ?? new()))
+                    {
+                        <option value="@cat" selected="@(ViewBag.CurrentCategory == cat)">@cat</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">Tình trạng</label>
+                <select name="status" class="form-select">
+                    <option value="">-- Tất cả --</option>
+                    <option value="Normal" selected="@(ViewBag.CurrentStatus == "Normal")">Bình thường</option>
+                    <option value="Damaged" selected="@(ViewBag.CurrentStatus == "Damaged")">Hư hỏng</option>
+                    <option value="Lost" selected="@(ViewBag.CurrentStatus == "Lost")">Mất</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-fill">
+                    <i class="fas fa-search me-1"></i>Tìm
+                </button>
+                <a asp-action="Index" class="btn btn-outline-secondary">
+                    <i class="fas fa-rotate-right"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-custom mb-0">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Tên sách</th>
+                    <th>Tác giả</th>
+                    <th>Thể loại</th>
+                    <th>Số lượng</th>
+                    <th>Tình trạng</th>
+                    <th style="width:180px">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ int stt = 1; }
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td class="text-secondary">@(stt++)</td>
+                        <td>
+                            <div class="fw-500">@item.Title</div>
+                            @if (!string.IsNullOrEmpty(item.Publisher))
+                            {
+                                <small class="text-secondary">@item.Publisher</small>
+                            }
+                        </td>
+                        <td>@item.Author</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(item.Category))
+                            {
+                                <span class="badge-status badge-info">@item.Category</span>
+                            }
+                        </td>
+                        <td>
+                            @if (item.Quantity == 0)
+                            {
+                                <span class="badge-status badge-danger">Hết</span>
+                            }
+                            else
+                            {
+                                <span class="fw-600">@item.Quantity</span>
+                            }
+                        </td>
+                        <td>
+                            @{
+                                var (cls, icon, label) = item.Status switch
+                                {
+                                    BookStatus.Damaged => ("badge-warning", "fa-tools", "Hư hỏng"),
+                                    BookStatus.Lost => ("badge-danger", "fa-skull-crossbones", "Mất"),
+                                    _ => ("badge-success", "fa-check", "Bình thường")
+                                };
+                            }
+                            <span class="badge-status @cls"><i class="fas @icon me-1"></i>@label</span>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1 flex-wrap">
+                                <a asp-action="Edit" asp-route-id="@item.Id"
+                                   class="btn btn-sm btn-outline-primary" title="Sửa">
+                                    <i class="fas fa-pen"></i>
+                                </a>
+                                <a asp-action="Delete" asp-route-id="@item.Id"
+                                   class="btn btn-sm btn-outline-danger" title="Xóa">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                                @if (item.Status == BookStatus.Normal)
+                                {
+                                    <form asp-action="MarkDamaged" asp-route-id="@item.Id" method="post" class="d-inline"
+                                          onsubmit="return confirm('Đánh dấu sách này là hư hỏng?')">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm btn-outline-warning" title="Hư hỏng">
+                                            <i class="fas fa-tools"></i>
+                                        </button>
+                                    </form>
+                                    <form asp-action="MarkLost" asp-route-id="@item.Id" method="post" class="d-inline"
+                                          onsubmit="return confirm('Đánh dấu sách này là mất?')">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Mất sách">
+                                            <i class="fas fa-times-circle"></i>
+                                        </button>
+                                    </form>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-secondary">
+                            <i class="fas fa-book-open mb-2 d-block" style="font-size:2rem;opacity:.3"></i>
+                            Chưa có sách nào
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

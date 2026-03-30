@@ -2,6 +2,13 @@ using System.ComponentModel.DataAnnotations;
 
 namespace MyLibraryDemo.Data.Models
 {
+    public enum BookStatus
+    {
+        Normal,
+        Damaged,
+        Lost
+    }
+
     public class Book
     {
         public int Id { get; set; }
@@ -25,7 +32,26 @@ namespace MyLibraryDemo.Data.Models
         [Display(Name = "Mô tả")]
         public required string Description { get; set; }
 
-        [Display(Name = "Trạng thái")]
-        public bool IsAvailable { get; set; } = true;
+        [MaxLength(100)]
+        [Display(Name = "Thể loại")]
+        public string? Category { get; set; }
+
+        [MaxLength(50)]
+        [Display(Name = "Ngôn ngữ")]
+        public string? Language { get; set; }
+
+        [MaxLength(150)]
+        [Display(Name = "Nhà xuất bản")]
+        public string? Publisher { get; set; }
+
+        [Display(Name = "Số lượng")]
+        [Range(0, 9999, ErrorMessage = "Số lượng phải từ 0 đến 9999")]
+        public int Quantity { get; set; } = 1;
+
+        [Display(Name = "Tình trạng")]
+        public BookStatus Status { get; set; } = BookStatus.Normal;
+
+        // Navigation
+        public ICollection<Loan>? Loans { get; set; }
     }
 }

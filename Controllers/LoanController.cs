@@ -1,156 +1,237 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using MyLibraryDemo.Data;
 using MyLibraryDemo.Data.Models;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
+using MyLibraryDemo.Services;
 
 public class LoanController : Controller
 {
     private readonly LibraryDbContext _context;
+    private readonly IBorrowService _borrowService;
 
-    public LoanController(LibraryDbContext context)
+    public LoanController(LibraryDbContext context, IBorrowService borrowService)
     {
         _context = context;
+        _borrowService = borrowService;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // INDEX
+    // ─────────────────────────────────────────────────────────────
     public async Task<IActionResult> Index()
     {
-        var libraryDbContext = _context.Loans.Include(l => l.Book).Include(l => l.Reader);
-        return View(await libraryDbContext.ToListAsync());
+        var loans = await _context.Loans
+            .Include(l => l.Book)
+            .Include(l => l.Reader)
+            .OrderByDescending(l => l.BorrowDate)
+            .ToListAsync();
+        return View(loans);
     }
 
-    public IActionResult Create()
-    {
-        PrepareViewBagForCreate();
-        return View(new Loan { LoanDate = DateTime.Today });
-    }
+    // ─────────────────────────────────────────────────────────────
+    // CREATE (Borrow)
+    // ─────────────────────────────────────────────────────────────
+    public IActionResult Create() => View();
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create([Bind("BookId,ReaderId,LoanDate")] Loan loan)
+    public async Task<IActionResult> Create([Bind("BookId,ReaderId")] Loan loan)
     {
+        if (loan.ReaderId == 0)
+            ModelState.AddModelError("ReaderId", "Vui lòng chọn độc giả.");
+        if (loan.BookId == 0)
+            ModelState.AddModelError("BookId", "Vui lòng chọn sách.");
+
         if (!ModelState.IsValid)
+            return View(loan);
+
+        var result = await _borrowService.BorrowBookAsync(loan.ReaderId, loan.BookId);
+
+        if (!result.Success)
         {
-            PrepareViewBagForCreate();
+            ModelState.AddModelError(string.Empty, result.ErrorMessage!);
             return View(loan);
         }
 
-        try
-        {
-            // Kiểm tra xem sách có sẵn không
-            var book = await _context.Books.FindAsync(loan.BookId);
-            if (book == null)
-            {
-                ModelState.AddModelError("BookId", "Không tìm thấy sách.");
-                PrepareViewBagForCreate();
-                return View(loan);
-            }
-
-            if (!book.IsAvailable)
-            {
-                ModelState.AddModelError("BookId", "Sách này đang được mượn.");
-                PrepareViewBagForCreate();
-                return View(loan);
-            }
-
-            if (loan.LoanDate == default)
-            {
-                loan.LoanDate = DateTime.Now;
-            }
-
-            // Cập nhật trạng thái sách
-            book.IsAvailable = false;
-            _context.Update(book);
-
-            _context.Add(loan);
-            await _context.SaveChangesAsync();
-            TempData["Success"] = "Tạo phiếu mượn thành công!";
-            return RedirectToAction(nameof(Index));
-        }
-        catch (Exception ex)
-        {
-            ModelState.AddModelError("", "Có lỗi xảy ra khi tạo phiếu mượn. Vui lòng thử lại.");
-            // Log the exception
-            Console.WriteLine(ex);
-            PrepareViewBagForCreate();
-            return View(loan);
-        }
+        TempData["Success"] = $"Tạo phiếu mượn thành công! Hạn trả: {result.Loan!.DueDate:dd/MM/yyyy}.";
+        return RedirectToAction(nameof(Index));
     }
 
-    private void PrepareViewBagForCreate()
+    // ─────────────────────────────────────────────────────────────
+    // SEARCH APIs – JSON endpoints for autocomplete
+    // ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Search readers by Name (partial, case-insensitive) OR Barcode (partial, case-insensitive).
+    /// Vietnamese diacritics handled via C# StringComparison instead of SQL LOWER().
+    /// Also returns borrow count so UI can show capacity.
+    /// GET /Loan/SearchReaders?term=...
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> SearchReaders(string? term)
     {
-        // Chỉ hiển thị sách có sẵn
-        var books = _context.Books
-            .Where(b => b.IsAvailable)
-            .Select(b => new { b.Id, DisplayText = $"{b.Title} - {b.Author}" });
-        ViewBag.BookId = new SelectList(books, "Id", "DisplayText");
-        ViewBag.ReaderId = new SelectList(_context.Readers, "Id", "Name");
+        if (string.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
+            return Json(Array.Empty<object>());
+
+        var trimmed = term.Trim();
+
+        // ── FIX B3: Load to C# then filter with CurrentCultureIgnoreCase ─────
+        // SQLite LOWER() does NOT handle Vietnamese diacritics; filter in-process.
+        var allReaders = await _context.Readers
+            .Include(r => r.LibraryCard)
+            .Include(r => r.Loans)
+            .ToListAsync();
+
+        var matched = allReaders
+            .Where(r =>
+                r.Name.Contains(trimmed, StringComparison.CurrentCultureIgnoreCase) ||
+                (r.LibraryCard != null &&
+                 r.LibraryCard.Barcode.Contains(trimmed, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(r => r.Name)
+            .Take(10)
+            .Select(r =>
+            {
+                var currentBorrows = r.Loans?.Count(l => !l.ReturnDate.HasValue && !l.IsLost) ?? 0;
+                return new
+                {
+                    id             = r.Id,
+                    name           = r.Name,
+                    email          = r.Email,
+                    barcode        = r.LibraryCard?.Barcode,
+                    cardStatus     = r.LibraryCard == null ? "none"
+                                   : !r.LibraryCard.IsActive ? "inactive"
+                                   : r.LibraryCard.IsExpired ? "expired"
+                                   : "valid",
+                    cardExpiry     = r.LibraryCard?.ExpiryDate.ToString("dd/MM/yyyy"),
+                    currentBorrows,
+                    maxAllowed     = r.MaxBooksAllowed,
+                    atLimit        = currentBorrows >= r.MaxBooksAllowed
+                };
+            })
+            .ToList();
+
+        return Json(matched);
     }
 
+    /// <summary>
+    /// Search books by Title (partial, case-insensitive).
+    /// Excludes Lost AND Damaged books per flow.md step 7.
+    /// Optionally marks books already borrowed by a specific reader.
+    /// GET /Loan/SearchBooks?term=...&readerId=...
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> SearchBooks(string? term, int? readerId)
+    {
+        if (string.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
+            return Json(Array.Empty<object>());
+
+        var trimmed = term.Trim();
+
+        // ── FIX B3: C#-side filter for diacritics ────────────────────────────
+        // ── FIX B4: Exclude Damaged per flow.md step 7 ───────────────────────
+        var allBooks = await _context.Books
+            .Where(b => b.Status != BookStatus.Lost && b.Status != BookStatus.Damaged)
+            .ToListAsync();
+
+        // Get books currently borrowed by this reader (for pre-warning)
+        HashSet<int> alreadyBorrowedIds = new();
+        if (readerId.HasValue && readerId > 0)
+        {
+            alreadyBorrowedIds = (await _context.Loans
+                .Where(l => l.ReaderId == readerId && !l.ReturnDate.HasValue && !l.IsLost)
+                .Select(l => l.BookId)
+                .ToListAsync()).ToHashSet();
+        }
+
+        var matched = allBooks
+            .Where(b => b.Title.Contains(trimmed, StringComparison.CurrentCultureIgnoreCase))
+            .OrderBy(b => b.Title)
+            .Take(10)
+            .Select(b => new
+            {
+                id              = b.Id,
+                title           = b.Title,
+                author          = b.Author,
+                category        = b.Category,
+                quantity        = b.Quantity,
+                status          = b.Status.ToString(),
+                available       = b.Quantity > 0,
+                alreadyBorrowed = alreadyBorrowedIds.Contains(b.Id)
+            })
+            .ToList();
+
+        return Json(matched);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // RETURN
+    // ─────────────────────────────────────────────────────────────
     public async Task<IActionResult> Return(int? id)
     {
         if (id == null) return NotFound();
+
         var loan = await _context.Loans
             .Include(l => l.Book)
             .Include(l => l.Reader)
             .FirstOrDefaultAsync(m => m.Id == id);
+
         if (loan == null) return NotFound();
+
+        if (loan.IsReturned)
+        {
+            TempData["Error"] = "Phiếu mượn này đã được trả rồi.";
+            return RedirectToAction(nameof(Index));
+        }
+
         return View(loan);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ReturnConfirmed(int id)
+    public async Task<IActionResult> ReturnConfirmed(int id, bool isLost = false, string? notes = null)
     {
-        var loan = await _context.Loans
-            .Include(l => l.Book)
-            .FirstOrDefaultAsync(l => l.Id == id);
-            
-        if (loan == null) return NotFound();
+        var result = await _borrowService.ReturnBookAsync(id, isLost, notes);
 
-        // Cập nhật trạng thái sách
-        if (loan.Book != null)
+        if (!result.Success)
         {
-            loan.Book.IsAvailable = true;
-            _context.Update(loan.Book);
+            TempData["Error"] = result.ErrorMessage;
+            return RedirectToAction(nameof(Index));
         }
 
-        loan.ReturnDate = DateTime.Now;
-        _context.Update(loan);
-        await _context.SaveChangesAsync();
-        TempData["Success"] = "Trả sách thành công!";
+        if (!string.IsNullOrEmpty(result.WarningMessage))
+            TempData["Warning"] = result.WarningMessage;
+
+        TempData["Success"] = isLost
+            ? "Đã ghi nhận sách mất. Tình trạng sách đã được cập nhật."
+            : "Trả sách thành công!";
+
         return RedirectToAction(nameof(Index));
     }
 
-    public async Task<IActionResult> Search(string bookTitle, string readerName, string status)
+    // ─────────────────────────────────────────────────────────────
+    // SEARCH LOANS (Index filter bar)
+    // ─────────────────────────────────────────────────────────────
+    public async Task<IActionResult> Search(string? bookTitle, string? readerName, string? status)
     {
-        IQueryable<Loan> query = _context.Loans.Include(l => l.Book).Include(l => l.Reader);
+        IQueryable<Loan> query = _context.Loans
+            .Include(l => l.Book)
+            .Include(l => l.Reader)
+            .OrderByDescending(l => l.BorrowDate);
 
         if (!string.IsNullOrWhiteSpace(bookTitle))
-        {
-            bookTitle = bookTitle.ToLower();
-            query = query.Where(l => l.Book != null && l.Book.Title.ToLower().Contains(bookTitle));
-        }
+            query = query.Where(l => l.Book != null && l.Book.Title.ToLower().Contains(bookTitle.ToLower()));
 
         if (!string.IsNullOrWhiteSpace(readerName))
-        {
-            readerName = readerName.ToLower();
-            query = query.Where(l => l.Reader != null && l.Reader.Name.ToLower().Contains(readerName));
-        }
+            query = query.Where(l => l.Reader != null && l.Reader.Name.ToLower().Contains(readerName.ToLower()));
 
         if (!string.IsNullOrWhiteSpace(status))
         {
-            status = status.ToLower();
-            if (status == "đã trả")
+            switch (status.ToLower())
             {
-                query = query.Where(l => l.ReturnDate.HasValue);
-            }
-            else if (status == "chưa trả")
-            {
-                query = query.Where(l => !l.ReturnDate.HasValue);
+                case "returned": query = query.Where(l => l.ReturnDate.HasValue); break;
+                case "active":   query = query.Where(l => !l.ReturnDate.HasValue && !l.IsLost); break;
+                case "overdue":  query = query.Where(l => !l.ReturnDate.HasValue && !l.IsLost && l.DueDate < DateTime.Today); break;
+                case "lost":     query = query.Where(l => l.IsLost); break;
             }
         }
 
