@@ -8,6 +8,7 @@ A simple **Library Management Web Application** built with **ASP.NET Core MVC**,
 
 - 📖 **Book Management**
   - Add, edit, delete books
+  - Manage quantity & availability
   - Search by title, author, publication year
 
 - 👤 **Reader Management**
@@ -17,7 +18,13 @@ A simple **Library Management Web Application** built with **ASP.NET Core MVC**,
 - 🔄 **Loan Management**
   - Create loan records
   - Return books
-  - Track loan status
+  - Track loan status (Borrowing / Returned / Lost / Damaged)
+  - Update book quantity automatically
+
+- 🪪 **Library Card Management**
+  - Issue library cards for readers
+  - Manage card status (Active / Expired / Blocked)
+  - Link cards with readers
 
 - 🔍 **Search**
   - Quick search across books, readers, and loans
@@ -37,6 +44,16 @@ A simple **Library Management Web Application** built with **ASP.NET Core MVC**,
 
 - MVC (Model – View – Controller)
 - Code First with Entity Framework Core
+- Service Layer (Business Logic Separation)
+
+---
+
+## 🗄️ Database
+
+- Database: **SQLite**
+- File: `library.db`
+- Includes **sample data for demo**
+- Automatically updated via Entity Framework Migrations
 
 ---
 
